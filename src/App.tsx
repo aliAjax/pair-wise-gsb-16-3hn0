@@ -1,156 +1,229 @@
+import { useEffect, useMemo, useState } from "react";
 import "./styles.css";
+import {
+  audiologists,
+  buildSeedAppointments,
+  buildSlots,
+  customers,
+  devices,
+  fmtDate,
+} from "./data/catalog";
+import { clearAppointments, loadAppointments, saveAppointments } from "./data/store";
+import type { Appointment, Slot } from "./data/types";
+import {
+  canConfirm,
+  cancel,
+  confirm,
+  confirmBlockers,
+  findConflicts,
+  register,
+  releaseSlot,
+  updateEditable,
+  type Conflict,
+  type EditablePatch,
+  type ReviewIssue,
+} from "./rules/booking";
+import { BookingForm, type RegisterDraft } from "./ui/BookingForm";
+import { ConflictList } from "./ui/ConflictList";
+import { OccupancyBoard } from "./ui/OccupancyBoard";
+import { ReviewBoard } from "./ui/ReviewBoard";
 
-const project = {
-  "id": "hxwl-01",
-  "port": 5101,
-  "title": "听力验配记录",
-  "subtitle": "门店听力师的验配档案与听力曲线工作台",
-  "stack": "React + Vite + TypeScript + CSS",
-  "theme": [
-    "#155e75",
-    "#22c55e",
-    "#f97316"
-  ],
-  "domain": "听力验配",
-  "users": [
-    "听力师",
-    "门店主管",
-    "复诊助理"
-  ],
-  "metrics": [
-    "左耳PTA",
-    "右耳PTA",
-    "言语识别率",
-    "复诊天数"
-  ],
-  "filters": [
-    "初配",
-    "复调",
-    "儿童",
-    "老人"
-  ],
-  "fields": [
-    "气导",
-    "骨导",
-    "言语识别率",
-    "助听器型号",
-    "增益调整",
-    "用户反馈"
-  ],
-  "records": [
-    [
-      "Liu-024",
-      "双耳高频下降",
-      "初配",
-      "RIC机型，2kHz后增益提高4dB"
-    ],
-    [
-      "Chen-118",
-      "单侧传导性损失",
-      "复调",
-      "低频压缩略降，反馈啸叫已消失"
-    ],
-    [
-      "Zhao-077",
-      "老人语频区下降",
-      "复诊",
-      "言语识别率从64%提升到76%"
-    ]
-  ]
-};
-
-const statusColors = ["status-ok", "status-watch", "status-danger"];
+const METRIC_COLORS = ["status-watch", "status-ok", "status-danger", "status-ok"];
 
 function MetricCard({ label, value, index }: { label: string; value: string; index: number }) {
   return (
     <article className="metric-card">
       <span>{label}</span>
       <strong>{value}</strong>
-      <i className={statusColors[index % statusColors.length]} />
+      <i className={METRIC_COLORS[index % METRIC_COLORS.length]} />
     </article>
   );
 }
 
 function App() {
-  const values = project.metrics.map((metric: string, index: number) => {
-    const base = [84, 12, 31, 7][index % 4];
-    return String(base + index * 3);
-  });
+  const [today] = useState(() => new Date());
+  const [slots] = useState<Slot[]>(() => buildSlots());
+  const [appointments, setAppointments] = useState<Appointment[]>(() =>
+    loadAppointments(() => buildSeedAppointments(slots))
+  );
+
+  // 预约、复核与占用全部由同一份持久化数据推导，刷新后保持一致
+  useEffect(() => {
+    saveAppointments(appointments);
+  }, [appointments]);
+
+  const customerMap = useMemo(() => new Map(customers.map((c) => [c.id, c])), []);
+  const audiologistMap = useMemo(() => new Map(audiologists.map((a) => [a.id, a])), []);
+  const deviceMap = useMemo(() => new Map(devices.map((d) => [d.id, d])), []);
+
+  const conflicts = useMemo(() => findConflicts(appointments), [appointments]);
+  const conflictsByAppt = useMemo(() => {
+    const map = new Map<string, Conflict[]>();
+    for (const c of conflicts) {
+      for (const id of [c.keeper.id, c.challenger.id]) {
+        const list = map.get(id) ?? [];
+        list.push(c);
+        map.set(id, list);
+      }
+    }
+    return map;
+  }, [conflicts]);
+
+  const patchAppointment = (id: string, fn: (a: Appointment) => Appointment) => {
+    setAppointments((prev) => prev.map((a) => (a.id === id ? fn(a) : a)));
+  };
+
+  const handleRegister = (draft: RegisterDraft) => {
+    const slot = slots.find((s) => s.id === draft.slotId);
+    if (!slot) return;
+    const now = Date.now();
+    const appt = register(
+      {
+        id: `A-${now.toString(36).toUpperCase()}`,
+        customerId: draft.customerId,
+        ear: draft.ear,
+        audiologistId: draft.audiologistId,
+        deviceId: draft.deviceId,
+        slot,
+      },
+      now
+    );
+    setAppointments((prev) => [...prev, appt]);
+  };
+
+  const handleConfirm = (id: string) => {
+    setAppointments((prev) =>
+      prev.map((a) => {
+        if (a.id !== id || a.status !== "pending") return a;
+        const customer = customerMap.get(a.customerId);
+        // 规则拦截：儿童未授权 / 耳镜超期 / 时段冲突时不得确认
+        if (!customer || !canConfirm(a, prev, customer, today)) return a;
+        return confirm(a, Date.now());
+      })
+    );
+  };
+
+  const handleRelease = (id: string) => patchAppointment(id, (a) => releaseSlot(a, Date.now()));
+  const handleCancel = (id: string) => patchAppointment(id, (a) => cancel(a, Date.now()));
+  const handleUpdate = (id: string, patch: EditablePatch) =>
+    patchAppointment(id, (a) => updateEditable(a, patch, Date.now()));
+
+  const handleReset = () => {
+    clearAppointments();
+    setAppointments(buildSeedAppointments(slots));
+  };
+
+  const getBlockers = (a: Appointment): ReviewIssue[] => {
+    if (a.status !== "pending") return [];
+    const customer = customerMap.get(a.customerId);
+    return customer ? confirmBlockers(a, appointments, customer, today) : [];
+  };
+
+  const getConflicts = (a: Appointment): Conflict[] => conflictsByAppt.get(a.id) ?? [];
+
+  const todayStr = fmtDate(today);
+  const pendingCount = appointments.filter((a) => a.status === "pending").length;
+  const confirmedCount = appointments.filter((a) => a.status === "confirmed").length;
+  const todayOccupied = appointments.filter(
+    (a) => a.status === "confirmed" && a.slot.date === todayStr
+  ).length;
+
+  const metrics = [
+    { label: "待复核预约", value: String(pendingCount) },
+    { label: "已确认预约", value: String(confirmedCount) },
+    { label: "时段冲突", value: String(conflicts.length) },
+    { label: "今日占用时段", value: String(todayOccupied) },
+  ];
 
   return (
     <main className="app-shell">
       <section className="hero">
         <div>
-          <p className="eyebrow">{project.id} · port {project.port}</p>
-          <h1>{project.title}</h1>
-          <p className="subtitle">{project.subtitle}</p>
+          <p className="eyebrow">hxwl-01 · port 5101</p>
+          <h1>验配预约复核台</h1>
+          <p className="subtitle">
+            登记客户、耳别、听力师、设备与时段；同一听力师或设备重叠时段只保留一单，
+            儿童验配未取得授权或近30天耳镜检查缺失时不得确认，改期先释放原时段，确认后冻结。
+          </p>
         </div>
         <div className="stack-card">
           <span>技术栈</span>
-          <strong>{project.stack}</strong>
+          <strong>React + Vite + TypeScript + CSS</strong>
+          <span>数据 / 规则 / 界面分层 · 本地持久化 · 无新增依赖</span>
+          <button onClick={handleReset}>重置示例数据</button>
         </div>
       </section>
 
       <section className="metrics-grid">
-        {project.metrics.map((metric: string, index: number) => (
-          <MetricCard key={metric} label={metric} value={values[index]} index={index} />
+        {metrics.map((metric, index) => (
+          <MetricCard key={metric.label} label={metric.label} value={metric.value} index={index} />
         ))}
       </section>
 
       <section className="workspace">
         <aside className="panel narrow">
-          <h2>角色</h2>
-          <div className="chips">
-            {project.users.map((user: string) => (
-              <span key={user}>{user}</span>
-            ))}
-          </div>
-          <h2>筛选</h2>
-          <div className="chips muted">
-            {project.filters.map((filter: string) => (
-              <button key={filter}>{filter}</button>
-            ))}
-          </div>
+          <h2>预约登记</h2>
+          <BookingForm
+            customers={customers}
+            audiologists={audiologists}
+            devices={devices}
+            slots={slots}
+            onRegister={handleRegister}
+          />
         </aside>
 
         <section className="panel">
           <div className="section-heading">
             <div>
-              <p>{project.domain}</p>
-              <h2>记录字段</h2>
+              <p>复核台</p>
+              <h2>预约与复核</h2>
             </div>
-            <button className="primary-action">新增记录</button>
           </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
+          <ReviewBoard
+            appointments={appointments}
+            slots={slots}
+            customers={customerMap}
+            audiologists={audiologistMap}
+            devices={deviceMap}
+            getBlockers={getBlockers}
+            getConflicts={getConflicts}
+            onConfirm={handleConfirm}
+            onRelease={handleRelease}
+            onCancel={handleCancel}
+            onUpdate={handleUpdate}
+          />
         </section>
       </section>
 
-      <section className="records panel">
+      <section className="panel">
         <div className="section-heading">
           <div>
-            <p>示例数据</p>
-            <h2>近期记录</h2>
+            <p>冲突</p>
+            <h2>时段冲突（同一听力师 / 设备只保留一单）</h2>
           </div>
-          <button>导出摘要</button>
         </div>
-        <div className="record-list">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")} className="record-card">
-              <div className="record-index">{String(index + 1).padStart(2, "0")}</div>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
+        <ConflictList
+          conflicts={conflicts}
+          customers={customerMap}
+          audiologists={audiologistMap}
+          devices={deviceMap}
+        />
+      </section>
+
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <p>占用</p>
+            <h2>时段占用（已确认预约）</h2>
+          </div>
         </div>
+        <OccupancyBoard
+          slots={slots}
+          confirmed={appointments.filter((a) => a.status === "confirmed")}
+          customers={customerMap}
+          audiologists={audiologistMap}
+          devices={deviceMap}
+        />
       </section>
     </main>
   );

@@ -18,7 +18,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -29,6 +30,11 @@ button {
   min-height: 38px;
   padding: 0 12px;
   cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .app-shell {
@@ -151,7 +157,7 @@ label span {
 
 .workspace {
   display: grid;
-  grid-template-columns: 290px 1fr;
+  grid-template-columns: 340px 1fr;
   gap: 20px;
   margin-bottom: 20px;
 }
@@ -214,13 +220,15 @@ label {
   gap: 8px;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0 12px;
   color: #172033;
+  background: #ffffff;
 }
 
 .record-list {
@@ -260,6 +268,269 @@ input {
   line-height: 1.6;
 }
 
+/* ---- 预约登记 ---- */
+
+.form-grid {
+  display: grid;
+  gap: 14px;
+}
+
+.form-note {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ---- 复核台 ---- */
+
+.appt-list {
+  display: grid;
+  gap: 12px;
+}
+
+.appt-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fbfdff;
+}
+
+.appt-card.is-pending {
+  border-left-color: var(--warn);
+}
+
+.appt-card.is-confirmed {
+  border-left-color: var(--accent);
+}
+
+.appt-card.is-cancelled {
+  border-left-color: #cbd5e1;
+  opacity: 0.6;
+}
+
+.appt-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.appt-head strong {
+  font-size: 16px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, #dbe3ef);
+  background: color-mix(in srgb, var(--primary) 8%, #ffffff);
+  color: #155e75;
+}
+
+.tag-child {
+  border-color: color-mix(in srgb, var(--warn) 45%, #ffffff);
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.tag-frozen {
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badge-pending {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.badge-confirmed {
+  background: #ecfdf5;
+  color: #15803d;
+}
+
+.badge-cancelled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.appt-line {
+  margin: 0 0 4px;
+  color: #526070;
+  line-height: 1.6;
+}
+
+.edit-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 4px 0;
+}
+
+.appt-note {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary) 8%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, #dbe3ef);
+  color: #155e75;
+  font-size: 13px;
+}
+
+.issue-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.issue-list li {
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  font-size: 13px;
+}
+
+.conflict-hint {
+  margin: 8px 0 0;
+  color: #be123c;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.appt-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 84px;
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+/* ---- 冲突列表 ---- */
+
+.conflict-card {
+  border-left: 4px solid #e11d48;
+}
+
+.conflict-card .record-index {
+  background: #e11d48;
+}
+
+.conflict-card b {
+  color: #172033;
+}
+
+.conflict-tip {
+  color: #be123c;
+  font-size: 13px;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: #64748b;
+  text-align: center;
+}
+
+/* ---- 时段占用 ---- */
+
+.occ-board {
+  display: grid;
+  gap: 18px;
+}
+
+.occ-date {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--primary);
+}
+
+.occ-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.occ-table th,
+.occ-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  vertical-align: top;
+}
+
+.occ-table th {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.occ-time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.occ-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.occ-free {
+  background: #ecfdf5;
+  color: #15803d;
+}
+
+.occ-busy {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.occ-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.occ-chip {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 28%, #dbe3ef);
+  background: color-mix(in srgb, var(--primary) 8%, #ffffff);
+}
+
+.stack-card button {
+  margin-top: 4px;
+}
+
 @media (max-width: 860px) {
   .hero,
   .workspace,
@@ -267,7 +538,13 @@ input {
     grid-template-columns: 1fr;
   }
 
-  .field-grid {
+  .field-grid,
+  .edit-row,
+  .appt-card {
     grid-template-columns: 1fr;
+  }
+
+  .appt-actions {
+    flex-direction: row;
   }
 }
